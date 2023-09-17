@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-16">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/gson.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jbullet.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jinput.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jinput-natives-all.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-awt-dialogs.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-core.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-desktop.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-effects.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-jbullet.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-jogg.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-lwjgl.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-networking.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-niftygui.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-plugins.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-terrain.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/j-ogg-vorbis.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jsr305.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/lwjgl.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/lwjgl-platform-natives-linux.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/lwjgl-platform-natives-osx.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/lwjgl-platform-natives-windows.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/nifty.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/nifty-default-controls.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/vecmath.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/xpp3.jar"/>
+	<classpathentry kind="lib" path="res"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
