@@ -27,9 +27,9 @@ public class Main extends SimpleApplication{
 	
 	@Override
 	public void simpleInitApp() {
-		Spatial mesh = assetManager.loadModel("sphere.obj"); // Replace 'YourMeshFile.j3o' with your mesh file name
+		Spatial mesh = assetManager.loadModel("sphere.obj");
 		Material mat = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
-        mat.setColor("Diffuse", ColorRGBA.Gray); // Set the diffuse color
+        mat.setColor("Diffuse", ColorRGBA.Gray);
         mat.setColor("Ambient", ColorRGBA.White.mult(0.1f));
         mat.setBoolean("UseMaterialColors", true);
         mesh.setMaterial(mat);
@@ -57,7 +57,9 @@ public class Main extends SimpleApplication{
         		if(!v3.neighbors.contains(v2)) v3.neighbors.add(v2);
         	}
         	
-        	computeGeodesicDistance(verticesList, verticesList.get(0));
+        	Vertex seed = new Vertex();
+        	seed.pos = new Vector3f(0f, -1f, 0f);
+        	computeGeodesicDistance(verticesList, seed);
         	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
         	List<Vertex> r = rows.get(rows.higherKey(1d));
@@ -65,11 +67,13 @@ public class Main extends SimpleApplication{
         	for(Vertex v : r) {
         		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             	marker.setColor("Color", ColorRGBA.Red);
-            	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f)); // Small sphere
+            	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.02f));
             	mg.setMaterial(marker);
             	mg.setLocalTranslation(v.pos);
             	rootNode.attachChild(mg);
         	}
+        	
+        	System.out.println(verticesList.size());
         	
 //        	VertexBuffer vb = m.getBuffer(VertexBuffer.Type.Position);
 //        	float[] vertices = BufferUtils.getFloatArray((FloatBuffer) vb.getData());
@@ -89,7 +93,7 @@ public class Main extends SimpleApplication{
 
         // Set up lighting
         AmbientLight ambient = new AmbientLight();
-        ambient.setColor(ColorRGBA.White); // Multiplier greater than 1.0f increases the intensity
+        ambient.setColor(ColorRGBA.White);
         rootNode.addLight(ambient);
 
         DirectionalLight sun = new DirectionalLight();
@@ -98,11 +102,10 @@ public class Main extends SimpleApplication{
         rootNode.addLight(sun);
         
         DirectionalLight backLight = new DirectionalLight();
-        backLight.setDirection(new Vector3f(1, 1, 1).normalizeLocal()); // Adjust direction as needed
+        backLight.setDirection(new Vector3f(1, 1, 1).normalizeLocal());
         backLight.setColor(ColorRGBA.White);
         rootNode.addLight(backLight);
 
-        // Set the camera position to view the mesh
         cam.setLocation(new Vector3f(0, 0, 10));
         cam.lookAt(Vector3f.ZERO, Vector3f.UNIT_Y);
 	}
