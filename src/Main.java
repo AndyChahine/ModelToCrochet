@@ -1,6 +1,8 @@
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.TreeMap;
 
@@ -18,7 +20,8 @@ import com.jme3.scene.shape.Sphere;
 
 public class Main extends SimpleApplication{
 	
-	public static final double THRESHOLD = 1e-6;
+	public static final double THRESHOLD = 1e-3;
+	public static final double GRID_WIDTH = 0.15d;
 
 	public static void main(String[] args) {
 		Main main = new Main();
@@ -57,23 +60,28 @@ public class Main extends SimpleApplication{
         		if(!v3.neighbors.contains(v2)) v3.neighbors.add(v2);
         	}
         	
-        	Vertex seed = new Vertex();
-        	seed.pos = new Vector3f(0f, -1f, 0f);
-        	computeGeodesicDistance(verticesList, seed);
+        	computeGeodesicDistance(verticesList, verticesList.get(0));
+        	
+        	Vertex ver = new Vertex();
+        	ver.pos = new Vector3f(0, 0, 0);
+        	Vertex v = findClosestVertex(ver, verticesList);
         	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
-        	List<Vertex> r = rows.get(rows.higherKey(1d));
+        	resampleVertices(rows);
         	
-        	for(Vertex v : r) {
-        		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-            	marker.setColor("Color", ColorRGBA.Red);
-            	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.02f));
-            	mg.setMaterial(marker);
-            	mg.setLocalTranslation(v.pos);
-            	rootNode.attachChild(mg);
+        	for(Map.Entry<Double, List<Vertex>> entry : rows.entrySet()) {
+        		List<Vertex> r = entry.getValue();
+        		System.out.println(r.size() + " " + r);
+        		
+        		for(int i = 0; i < r.size(); i++) {
+            		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+                	marker.setColor("Color", new ColorRGBA(1f, (float)i / (float)r.size(), (float)i / (float)r.size(), 1f));
+                	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.02f));
+                	mg.setMaterial(marker);
+                	mg.setLocalTranslation(r.get(i).pos);
+                	rootNode.attachChild(mg);
+            	}
         	}
-        	
-        	System.out.println(verticesList.size());
         	
 //        	VertexBuffer vb = m.getBuffer(VertexBuffer.Type.Position);
 //        	float[] vertices = BufferUtils.getFloatArray((FloatBuffer) vb.getData());
@@ -108,6 +116,37 @@ public class Main extends SimpleApplication{
 
         cam.setLocation(new Vector3f(0, 0, 10));
         cam.lookAt(Vector3f.ZERO, Vector3f.UNIT_Y);
+        flyCam.setMoveSpeed(10f);
+        flyCam.setZoomSpeed(10f);
+        flyCam.setDragToRotate(true);
+        inputManager.setCursorVisible(true);
+	}
+	
+	public void resampleVertices(TreeMap<Double, List<Vertex>> treeMap) {
+		double epsilon = GRID_WIDTH * 0.0001d;
+		
+		for(Entry<Double, List<Vertex>> rowEntry : treeMap.entrySet()) {
+			
+			Double key = rowEntry.getKey();
+			List<Vertex> rowVertices = rowEntry.getValue();
+			
+			List<Vertex> selectedVertices = new ArrayList<>();
+			selectedVertices.add(rowVertices.get(0));
+			
+			for(int i = 1; i < rowVertices.size(); i++) {
+				double dist = rowVertices.get(i).pos.distance(selectedVertices.get(selectedVertices.size() - 1).pos);
+				
+				if(Math.abs(dist - GRID_WIDTH) <= epsilon) {
+					selectedVertices.add(rowVertices.get(i));
+				}else if(dist > GRID_WIDTH) {
+					Vertex interVertex = interpolate(selectedVertices.get(selectedVertices.size() - 1), rowVertices.get(i), GRID_WIDTH);
+					selectedVertices.add(interVertex);
+					i--;
+				}
+			}
+			
+			treeMap.put(key, selectedVertices);
+		}
 	}
 	
 	public Vertex findOrCreateVertex(Vector3f pos, List<Vertex> verticesList) {
@@ -173,5 +212,40 @@ public class Main extends SimpleApplication{
 		}
 		
 		return rows;
+	}
+	
+	public static Vertex findClosestVertex(Vertex input, List<Vertex> vertices) {
+		
+		if(vertices == null || vertices.isEmpty()) {
+			return null;
+		}
+		
+		Vertex closest = vertices.get(0);
+		double minDist = input.pos.distance(closest.pos);
+		for(Vertex vertex : vertices) {
+			
+			double curDist = input.pos.distance(vertex.pos);
+			if(curDist < minDist) {
+				minDist = curDist;
+				closest = vertex;
+			}
+		}
+		
+		return closest;
+	}
+	
+	public static Vertex interpolate(Vertex start, Vertex end, double targetDist) {
+		Vector3f direction = end.pos.subtract(start.pos);
+		
+		direction.normalizeLocal();
+		
+		direction.multLocal((float) targetDist);
+		
+		Vector3f interpolatedPos = start.pos.add(direction);
+		
+		Vertex interpolatedVertex = new Vertex();
+		interpolatedVertex.pos = interpolatedPos;
+		
+		return interpolatedVertex;
 	}
 }
