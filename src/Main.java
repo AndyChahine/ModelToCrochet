@@ -61,19 +61,24 @@ public class Main extends SimpleApplication{
         	}
         	
         	computeGeodesicDistance(verticesList, verticesList.get(0));
+        	computeG(verticesList, 100);
         	
         	Vertex ver = new Vertex();
         	ver.pos = new Vector3f(0, 0, 0);
         	Vertex v = findClosestVertex(ver, verticesList);
         	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
-        	resampleVertices(rows);
+        	for(Map.Entry<Double, List<Vertex>> mapEntry : rows.entrySet()) {
+        		List<Vertex> list = mapEntry.getValue();
+        		list.sort((v1, v2) -> Double.compare(v1.g, v2.g));
+        	}
+//        	resampleVertices(rows);
         	
         	for(Map.Entry<Double, List<Vertex>> entry : rows.entrySet()) {
         		List<Vertex> r = entry.getValue();
-        		System.out.println(r.size() + " " + r);
         		
         		for(int i = 0; i < r.size(); i++) {
+        			System.out.print(r.size() + " " + r.get(i).g + ", ");
             		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
                 	marker.setColor("Color", new ColorRGBA(1f, (float)i / (float)r.size(), (float)i / (float)r.size(), 1f));
                 	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.02f));
@@ -81,6 +86,7 @@ public class Main extends SimpleApplication{
                 	mg.setLocalTranslation(r.get(i).pos);
                 	rootNode.attachChild(mg);
             	}
+        		System.out.println();
         	}
         	
 //        	VertexBuffer vb = m.getBuffer(VertexBuffer.Type.Position);
@@ -160,6 +166,58 @@ public class Main extends SimpleApplication{
 		newVertex.pos = pos;
 		verticesList.add(newVertex);
 		return newVertex;
+	}
+	
+	public void computeG(List<Vertex> verticesList, int maxIterations) {
+		double learningRate = 0.01d;
+		
+		for(int iter = 0; iter < maxIterations; iter++) {
+			
+			for(Vertex v : verticesList) {
+				v.gradF = computeGradientF(v);
+				v.gradG = computeGradientG(v);
+			}
+			
+			for(Vertex v : verticesList) {
+				Vector3f rotatedGradF = rotateByPiOver2(v.gradF);
+				double dotProduct = rotatedGradF.dot(v.gradG);
+				double localObjective = Math.pow(dotProduct - 1, 2);
+				
+				double error = dotProduct - 1;
+				
+				double gradientLocalObj = 2 * error * rotatedGradF.length();
+				
+				v.g = learningRate * gradientLocalObj;
+			}
+		}
+	}
+	
+	public Vector3f computeGradientG(Vertex v) {
+		Vector3f gradient = Vector3f.ZERO;
+		for(Vertex neighbor : v.neighbors) {
+			Vector3f direction = neighbor.pos.subtract(v.pos);
+			double dg = neighbor.g - v.g;
+			Vector3f weightedDirection = direction.scaleAdd((float)dg, Vector3f.ZERO);
+			gradient = gradient.add(weightedDirection);
+		}
+		
+		return gradient.normalize();
+	}
+	
+	public Vector3f computeGradientF(Vertex v) {
+		Vector3f gradient = new Vector3f(0f, 0f, 0f);
+		for(Vertex neighbor : v.neighbors) {
+			Vector3f direction = neighbor.pos.subtract(v.pos);
+			double df = neighbor.f - v.f;
+			Vector3f weightedDirection = direction.scaleAdd((float) df, Vector3f.ZERO);
+			gradient = gradient.add(weightedDirection);
+		}
+		
+		return gradient.normalize();
+	}
+	
+	public Vector3f rotateByPiOver2(Vector3f gradient) {
+		return new Vector3f(-gradient.y, gradient.x, gradient.z);
 	}
 	
 	public void computeGeodesicDistance(List<Vertex> vertices, Vertex seed) {
