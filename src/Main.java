@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import com.jme3.app.SimpleApplication;
 import com.jme3.light.AmbientLight;
@@ -16,6 +17,7 @@ import com.jme3.math.Vector3f;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Mesh;
 import com.jme3.scene.Spatial;
+import com.jme3.scene.debug.Arrow;
 import com.jme3.scene.shape.Sphere;
 
 public class Main extends SimpleApplication{
@@ -60,25 +62,40 @@ public class Main extends SimpleApplication{
         		if(!v3.neighbors.contains(v2)) v3.neighbors.add(v2);
         	}
         	
-        	computeGeodesicDistance(verticesList, verticesList.get(0));
-        	computeG(verticesList, 100);
+        	computeGeodesicDistanceFMM(verticesList, verticesList.get(0));
+        	computeG(verticesList, 1000);
         	
         	Vertex ver = new Vertex();
         	ver.pos = new Vector3f(0, 0, 0);
         	Vertex v = findClosestVertex(ver, verticesList);
         	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
+        	
         	for(Map.Entry<Double, List<Vertex>> mapEntry : rows.entrySet()) {
         		List<Vertex> list = mapEntry.getValue();
         		list.sort((v1, v2) -> Double.compare(v1.g, v2.g));
         	}
+        	
 //        	resampleVertices(rows);
         	
+        	int index = 0;
         	for(Map.Entry<Double, List<Vertex>> entry : rows.entrySet()) {
         		List<Vertex> r = entry.getValue();
         		
         		for(int i = 0; i < r.size(); i++) {
-        			System.out.print(r.size() + " " + r.get(i).g + ", ");
+        			
+        			Vector3f arrowVec = new Vector3f(r.get(i).gradF).scaleAdd(0.25f, Vector3f.ZERO);
+        			Arrow arrow = new Arrow(arrowVec);
+        			Geometry gArrow = new Geometry("g vector", arrow);
+        			Material gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+        		    gmat.getAdditionalRenderState().setWireframe(true);
+        		    gmat.getAdditionalRenderState().setLineWidth(1);
+        		    gmat.setColor("Color", ColorRGBA.Green);
+        		    gArrow.setMaterial(gmat);
+        		    rootNode.attachChild(gArrow);
+        		    gArrow.setLocalTranslation(r.get(i).pos);
+        			
+//        			System.out.print(r.size() + " " + r.get(i).f + ", ");
             		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
                 	marker.setColor("Color", new ColorRGBA(1f, (float)i / (float)r.size(), (float)i / (float)r.size(), 1f));
                 	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.02f));
@@ -86,7 +103,8 @@ public class Main extends SimpleApplication{
                 	mg.setLocalTranslation(r.get(i).pos);
                 	rootNode.attachChild(mg);
             	}
-        		System.out.println();
+//        		System.out.println();
+        		index++;
         	}
         	
 //        	VertexBuffer vb = m.getBuffer(VertexBuffer.Type.Position);
@@ -126,6 +144,26 @@ public class Main extends SimpleApplication{
         flyCam.setZoomSpeed(10f);
         flyCam.setDragToRotate(true);
         inputManager.setCursorVisible(true);
+	}
+	
+	public Vector3f computeTangent(Vertex p) {
+		Vector3f gradient = computeGradientF(p);
+		
+		Vector3f basis1 = gradient.normalize();
+		
+		Vector3f arbVec = new Vector3f(1f, 0f, 0f);
+		if(Math.abs(basis1.dot(arbVec)) > 0.9d) {
+			arbVec = new Vector3f(0f, 1f, 0f);
+		}
+		
+		Vector3f basis2 = basis1.cross(arbVec).normalize();
+		
+		double coeff1 = gradient.dot(basis1);
+		double coeff2 = gradient.dot(basis2);
+		
+		Vector3f tangent = basis2.mult((float) coeff1).subtract(basis1.mult((float) coeff2));
+		
+		return basis2;
 	}
 	
 	public void resampleVertices(TreeMap<Double, List<Vertex>> treeMap) {
@@ -179,15 +217,14 @@ public class Main extends SimpleApplication{
 			}
 			
 			for(Vertex v : verticesList) {
-				Vector3f rotatedGradF = rotateByPiOver2(v.gradF);
+				Vector3f rotatedGradF = computeTangent(v);
 				double dotProduct = rotatedGradF.dot(v.gradG);
-				double localObjective = Math.pow(dotProduct - 1, 2);
 				
 				double error = dotProduct - 1;
 				
 				double gradientLocalObj = 2 * error * rotatedGradF.length();
 				
-				v.g = learningRate * gradientLocalObj;
+				v.g -= learningRate * gradientLocalObj;
 			}
 		}
 	}
@@ -218,6 +255,103 @@ public class Main extends SimpleApplication{
 	
 	public Vector3f rotateByPiOver2(Vector3f gradient) {
 		return new Vector3f(-gradient.y, gradient.x, gradient.z);
+	}
+	
+	public void updateTentativeDistance(Vertex current, Vertex neighbor) {
+		List<Vertex> knownNeighbors = neighbor.neighbors.stream()
+		        .filter(v -> v.state == State.KNOWN)
+		        .collect(Collectors.toList());
+		
+		if (knownNeighbors.size() < 2) {
+	        return; // We need at least two known neighbors to update the distance.
+	    }
+
+	    // Sort the known neighbors by their distance.
+	    knownNeighbors.sort(Comparator.comparing(v -> v.f));
+
+	    Vertex a = knownNeighbors.get(0);
+	    Vertex b = knownNeighbors.get(1);
+
+	    double da = a.f;
+	    double db = b.f;
+
+	    double la = neighbor.pos.distance(a.pos);
+	    double lb = neighbor.pos.distance(b.pos);
+
+	    // Solve the quadratic equation derived from the Eikonal equation.
+	    double A = 2.0 / (la * la) + 2.0 / (lb * lb);
+	    double B = -2.0 * (da / (la * la) + db / (lb * lb));
+	    double C = (da * da) / (la * la) + (db * db) / (lb * lb) - 1.0;
+
+	    double discriminant = B * B - 4.0 * A * C;
+
+	    if (discriminant >= 0) {
+	        double T1 = (-B + Math.sqrt(discriminant)) / (2.0 * A);
+	        double T2 = (-B - Math.sqrt(discriminant)) / (2.0 * A);
+
+	        // Choose the smaller positive solution.
+	        double T = (T1 > 0 && T2 > 0) ? Math.min(T1, T2) : Math.max(T1, T2);
+
+	        if (T < neighbor.f) {
+	            neighbor.f = T;
+	        }
+	    }
+	}
+	
+	public void computeGeodesicDistanceFMM(List<Vertex> vertices, Vertex seed) {
+	    PriorityQueue<Vertex> queue = new PriorityQueue<>(Comparator.comparing(v -> v.f));
+
+	    for (Vertex v : vertices) {
+	        v.f = Double.MAX_VALUE;
+	        v.state = State.FAR;
+	    }
+
+	    seed.f = 0;
+	    seed.state = State.KNOWN;
+	    
+	    System.out.println("Total vertices: " + vertices.size());
+	    System.out.println("Seed vertex: " + seed.pos + " with init dist: " + seed.f);
+	    System.out.println("Number of seed neighbors: " + seed.neighbors.size());
+
+	    for (Vertex neighbor : seed.neighbors) {
+	        neighbor.f = seed.pos.distance(neighbor.pos);
+	        neighbor.state = State.TRIAL;
+	        queue.add(neighbor);
+//	        System.out.println("Seed neighbors: " + neighbor.pos + " with dist: " + neighbor.f + " and state: " + neighbor.state);
+	    }
+
+	    while (!queue.isEmpty()) {
+	        Vertex current = queue.poll();
+	        current.state = State.KNOWN;
+	        long kc = current.neighbors.stream().filter(v -> v.state == State.KNOWN).count();
+//	        System.out.println("Processing vertex: " + current.pos + " with dist: " + current.f + " and state: " + current.state + " knowns: " + kc);
+	        
+	        for (Vertex neighbor : current.neighbors) {
+	        	double oldDist = neighbor.f;
+	            if (neighbor.state == State.FAR) {
+	                updateTentativeDistance(current, neighbor);
+	                neighbor.state = State.TRIAL;
+	                queue.add(neighbor);
+//	                System.out.println("Neighbor: " + neighbor.pos + " with old dist: " + oldDist + " and new dist: " + neighbor.f + " and state: " + neighbor.state);
+	            }else {
+//	            	System.out.println("Neighbor (not updated): " + neighbor.pos + " with dist: " + neighbor.f + " and state: " + neighbor.state);
+	            }
+	        }
+//	        System.out.println();
+	        
+	        for(Vertex vt : queue.stream().toList()) {
+	        	System.out.print(vt.pos.toString() + " " + vt.f + ") ");
+	        }
+	        System.out.println();
+	    }
+	    
+	    long knownCount = vertices.stream().filter(v -> v.state == State.KNOWN).count();
+	    long trialCount = vertices.stream().filter(v -> v.state == State.TRIAL).count();
+	    long farCount = vertices.stream().filter(v -> v.state == State.FAR).count();
+	    System.out.println("Vertices with state KNOWN: " + knownCount);
+	    System.out.println("Vertices with state TRIAL: " + trialCount);
+	    System.out.println("Vertices with state FAR: " + farCount);
+
 	}
 	
 	public void computeGeodesicDistance(List<Vertex> vertices, Vertex seed) {
@@ -301,8 +435,16 @@ public class Main extends SimpleApplication{
 		
 		Vector3f interpolatedPos = start.pos.add(direction);
 		
+		double totalDist = start.pos.distance(end.pos);
+		double weight = targetDist / totalDist;
+		
+		double interpolatedF = start.f + weight * (end.f - start.f);
+		double interpolatedG = start.g + weight * (end.g - start.g);
+		
 		Vertex interpolatedVertex = new Vertex();
 		interpolatedVertex.pos = interpolatedPos;
+		interpolatedVertex.f = interpolatedF;
+		interpolatedVertex.g = interpolatedG;
 		
 		return interpolatedVertex;
 	}

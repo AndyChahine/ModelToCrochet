@@ -7,11 +7,12 @@ import com.jme3.math.Vector3f;
 public class Vertex {
 	Vector3f pos;
 	List<Vertex> neighbors = new ArrayList<Vertex>();
-	double f = Double.MAX_VALUE;
-	double g = 1d;
+	double f;
+	double g = 0d;
 	Vector3f gradF = Vector3f.ZERO;
 	Vector3f gradG = Vector3f.ZERO;
 	boolean finalized = false;
+	State state;
 	
 	@Override
 	public boolean equals(Object o) {
