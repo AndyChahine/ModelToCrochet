@@ -15,6 +15,8 @@ public class Vertex {
 	boolean finalized = false;
 	boolean isBoundary = false;
 	boolean visited = false;
+	Vertex predecessor;
+	double distance = Double.MAX_VALUE;
 	
 	@Override
 	public boolean equals(Object o) {

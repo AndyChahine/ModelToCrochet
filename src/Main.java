@@ -1,11 +1,14 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.PriorityQueue;
+import java.util.Random;
+import java.util.Set;
 import java.util.TreeMap;
-import java.util.stream.Collectors;
 
 import com.jme3.app.SimpleApplication;
 import com.jme3.light.AmbientLight;
@@ -19,7 +22,6 @@ import com.jme3.scene.Mesh;
 import com.jme3.scene.Spatial;
 import com.jme3.scene.debug.Arrow;
 import com.jme3.scene.shape.Sphere;
-import com.jme3.system.AppSettings;
 
 public class Main extends SimpleApplication{
 	
@@ -65,6 +67,15 @@ public class Main extends SimpleApplication{
         	
         	computeGeodesicDistance(verticesList, verticesList.get(0));
         	
+        	List<Vertex> boundary = findLongestGeodesic(verticesList, verticesList.get(0));
+        	for(Vertex v : verticesList) {
+        		for(Vertex b : boundary) {
+        			if(v.equals(b)) {
+        				v.isBoundary = true;
+        			}
+        		}
+        	}
+        	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
         	
         	computeG(verticesList, 1000);
@@ -83,7 +94,7 @@ public class Main extends SimpleApplication{
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
         			System.out.println("vertex: " + r.get(i).pos.toString() + " f: " + r.get(i).f + " gradient of g: " + r.get(i).gradG + " gradient of f: " + r.get(i).gradF);
-        			Vector3f arrowVec = new Vector3f(r.get(i).gradF).scaleAdd(0.25f, Vector3f.ZERO);
+        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF).scaleAdd(0.25f, Vector3f.ZERO);
         			Arrow arrow = new Arrow(arrowVec);
         			Geometry gArrow = new Geometry("f vector", arrow);
         			Material gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -94,7 +105,7 @@ public class Main extends SimpleApplication{
         		    rootNode.attachChild(gArrow);
         		    gArrow.setLocalTranslation(r.get(i).pos);
         		    
-        		    arrowVec = new Vector3f(r.get(i).rotatedGradF).scaleAdd(0.25f, Vector3f.ZERO);
+        		    arrowVec = new Vector3f(r.get(i).gradG).scaleAdd(0.25f, Vector3f.ZERO);
         			arrow = new Arrow(arrowVec);
         			gArrow = new Geometry("rotated f vector", arrow);
         			gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -127,6 +138,17 @@ public class Main extends SimpleApplication{
             	}
         		System.out.println();
         		index++;
+        	}
+        	
+        	System.out.println(boundary.size());
+        	for(Vertex v : boundary) {
+        		System.out.println("boundary vertices: " + v.pos.toString());
+        		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+            	marker.setColor("Color", new ColorRGBA(0f, 0f, 1f, 1f));
+            	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
+            	mg.setMaterial(marker);
+            	mg.setLocalTranslation(v.pos);
+            	rootNode.attachChild(mg);
         	}
         	
 //        	VertexBuffer vb = m.getBuffer(VertexBuffer.Type.Position);
@@ -239,6 +261,10 @@ public class Main extends SimpleApplication{
 			}
 			
 			for(int i = 0; i < verticesList.size(); i++) {
+				if(verticesList.get(i).isBoundary) {
+					verticesList.get(i).g = 0d;
+					continue;
+				}
 				verticesList.get(i).rotatedGradF = computeTangent(verticesList.get(i).gradF);
 				double dotProduct = verticesList.get(i).rotatedGradF.dot(verticesList.get(i).gradG);
 				
@@ -373,6 +399,50 @@ public class Main extends SimpleApplication{
 //
 //	}
 	
+	public List<Vertex> findLongestGeodesic(List<Vertex> vertices, Vertex seed) {
+	    // Step 1: Compute shortest paths using Dijkstra's algorithm
+	    PriorityQueue<Vertex> queue = new PriorityQueue<>(Comparator.comparingDouble(v -> v.distance));
+	    seed.distance = 0;
+	    queue.add(seed);
+
+	    while (!queue.isEmpty()) {
+	        Vertex current = queue.poll();
+
+	        if (current.distance == Double.MAX_VALUE) {
+	            break;  // All remaining vertices are unreachable from the seed
+	        }
+
+	        for (Vertex neighbor : current.neighbors) {
+	            double newDist = current.distance + current.pos.distance(neighbor.pos);
+	            if (newDist < neighbor.distance) {
+	                queue.remove(neighbor);  // Remove the old instance from the queue
+	                neighbor.distance = newDist;
+	                neighbor.predecessor = current;
+	                queue.add(neighbor);  // Add the updated instance to the queue
+	            }
+	        }
+	    }
+
+	    // Step 2: Identify the vertex with the maximum geodesic distance
+	    Vertex farthest = seed;
+	    for (Vertex v : vertices) {
+	        if (v.distance > farthest.distance) {
+	            farthest = v;
+	        }
+	    }
+
+	    // Step 3: Reconstruct the path from the farthest vertex to the seed
+	    List<Vertex> path = new ArrayList<>();
+	    while (farthest != null) {
+	        path.add(farthest);
+	        farthest = farthest.predecessor;
+	    }
+	    Collections.reverse(path);  // so the path starts from the seed
+
+	    return path;
+	}
+
+ 	
 	public void computeGeodesicDistance(List<Vertex> vertices, Vertex seed) {
 		PriorityQueue<Vertex> queue = new PriorityQueue<>(Comparator.comparing(v -> v.f));
 		
