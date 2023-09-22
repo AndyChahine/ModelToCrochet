@@ -8,7 +8,7 @@ public class Vertex {
 	Vector3f pos;
 	List<Vertex> neighbors = new ArrayList<Vertex>();
 	double f = Double.MAX_VALUE;
-	double g = 0d;
+	double g = Math.random();
 	Vector3f gradF = Vector3f.ZERO;
 	Vector3f gradG = Vector3f.ZERO;
 	Vector3f rotatedGradF = Vector3f.ZERO;

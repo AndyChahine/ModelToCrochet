@@ -9,6 +9,7 @@ import java.util.PriorityQueue;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import com.jme3.app.SimpleApplication;
 import com.jme3.light.AmbientLight;
@@ -35,7 +36,7 @@ public class Main extends SimpleApplication{
 	
 	@Override
 	public void simpleInitApp() {
-		Spatial mesh = assetManager.loadModel("sphere.obj");
+		Spatial mesh = assetManager.loadModel("sphere2.obj");
 		Material mat = new Material(assetManager, "Common/MatDefs/Light/Lighting.j3md");
         mat.setColor("Diffuse", ColorRGBA.Gray);
         mat.setColor("Ambient", ColorRGBA.White.mult(0.1f));
@@ -65,9 +66,11 @@ public class Main extends SimpleApplication{
         		if(!v3.neighbors.contains(v2)) v3.neighbors.add(v2);
         	}
         	
-        	computeGeodesicDistance(verticesList, verticesList.get(0));
+        	Vertex seed = findClosestVertex(new Vector3f(0f, -1f, 0f), verticesList);
         	
-        	List<Vertex> boundary = findLongestGeodesic(verticesList, verticesList.get(0));
+        	computeGeodesicDistance(verticesList, seed);
+        	
+        	List<Vertex> boundary = findLongestGeodesic(verticesList, seed);
         	for(Vertex v : verticesList) {
         		for(Vertex b : boundary) {
         			if(v.equals(b)) {
@@ -78,7 +81,7 @@ public class Main extends SimpleApplication{
         	
         	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
         	
-        	computeG(verticesList, 1000);
+        	computeG(verticesList, 60000);
         	
         	for(Map.Entry<Double, List<Vertex>> mapEntry : rows.entrySet()) {
         		List<Vertex> list = mapEntry.getValue();
@@ -93,8 +96,8 @@ public class Main extends SimpleApplication{
         		
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
-        			System.out.println("vertex: " + r.get(i).pos.toString() + " f: " + r.get(i).f + " gradient of g: " + r.get(i).gradG + " gradient of f: " + r.get(i).gradF);
-        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF).scaleAdd(0.25f, Vector3f.ZERO);
+//        			System.out.println("vertex: " + r.get(i).pos.toString() + " g: " + r.get(i).g);
+        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
         			Arrow arrow = new Arrow(arrowVec);
         			Geometry gArrow = new Geometry("f vector", arrow);
         			Material gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -107,7 +110,7 @@ public class Main extends SimpleApplication{
         		    
         		    arrowVec = new Vector3f(r.get(i).gradG).scaleAdd(0.25f, Vector3f.ZERO);
         			arrow = new Arrow(arrowVec);
-        			gArrow = new Geometry("rotated f vector", arrow);
+        			gArrow = new Geometry("grad f vector", arrow);
         			gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         		    gmat.getAdditionalRenderState().setWireframe(true);
         		    gmat.getAdditionalRenderState().setLineWidth(4);
@@ -127,12 +130,12 @@ public class Main extends SimpleApplication{
 //        		    rootNode.attachChild(gArrow);
 //        		    gArrow.setLocalTranslation(r.get(i).pos);
         			
-            		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-                	marker.setColor("Color", new ColorRGBA(1f, (float)i / (float)r.size(), (float)(index) / rows.size(), 1f));
-                	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
-                	mg.setMaterial(marker);
-                	mg.setLocalTranslation(r.get(i).pos);
-                	rootNode.attachChild(mg);
+//            		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+//                	marker.setColor("Color", new ColorRGBA(1f, (float)i / (float)r.size(), (float)(index) / rows.size(), 1f));
+//                	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
+//                	mg.setMaterial(marker);
+//                	mg.setLocalTranslation(r.get(i).pos);
+//                	rootNode.attachChild(mg);
                 	
                 	
             	}
@@ -142,7 +145,6 @@ public class Main extends SimpleApplication{
         	
         	System.out.println(boundary.size());
         	for(Vertex v : boundary) {
-        		System.out.println("boundary vertices: " + v.pos.toString());
         		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             	marker.setColor("Color", new ColorRGBA(0f, 0f, 1f, 1f));
             	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
@@ -252,28 +254,38 @@ public class Main extends SimpleApplication{
 	
 	public void computeG(List<Vertex> verticesList, int maxIterations) {
 		double learningRate = 0.01d;
+		double lambda = 0.01d;
 		
 		for(int iter = 0; iter < maxIterations; iter++) {
+//			System.out.println("Initial g values: " + verticesList.stream().map(v -> v.g).collect(Collectors.toList()));
+			
+			double sums = 0d;
 			
 			for(Vertex v : verticesList) {
 				v.gradF = computeGradientF(v);
 				v.gradG = computeGradientG(v);
-			}
-			
-			for(int i = 0; i < verticesList.size(); i++) {
-				if(verticesList.get(i).isBoundary) {
-					verticesList.get(i).g = 0d;
+				v.rotatedGradF = computeTangent(v.gradF);
+				
+				if(v.isBoundary) {
+					v.g = 0d;
 					continue;
 				}
-				verticesList.get(i).rotatedGradF = computeTangent(verticesList.get(i).gradF);
-				double dotProduct = verticesList.get(i).rotatedGradF.dot(verticesList.get(i).gradG);
 				
-				double error = dotProduct - 1;
+				double dotProduct = v.rotatedGradF.dot(v.gradG);
 				
-				double gradientLocalObj = 2 * error * verticesList.get(i).rotatedGradF.length();
+				double error = Math.abs(dotProduct - 1d);
 				
-				verticesList.get(i).g -= learningRate * gradientLocalObj;
+				double squaredError = error * error;
+				
+				double gradientLocalObjective = 2d * error * v.rotatedGradF.length();
+				
+				sums += squaredError;
+				
+				v.g -= learningRate * (gradientLocalObjective + lambda * v.g);
 			}
+			
+//			System.out.println("Updated g values: " + verticesList.stream().map(v -> v.g).collect(Collectors.toList()));
+			System.out.println("epoch: " + iter + " sum: " + sums);
 		}
 	}
 	
@@ -286,7 +298,7 @@ public class Main extends SimpleApplication{
 			gradient = gradient.add(weightedDirection);
 		}
 		
-		return gradient.normalize();
+		return gradient;
 	}
 	
 	public Vector3f computeGradientF(Vertex v) {
@@ -298,7 +310,7 @@ public class Main extends SimpleApplication{
 			gradient = gradient.add(weightedDirection);
 		}
 		
-		return gradient.normalize();
+		return gradient;
 	}
 	
 //	public void updateTentativeDistance(Vertex current, Vertex neighbor) {
@@ -495,17 +507,17 @@ public class Main extends SimpleApplication{
 		return rows;
 	}
 	
-	public static Vertex findClosestVertex(Vertex input, List<Vertex> vertices) {
+	public static Vertex findClosestVertex(Vector3f input, List<Vertex> vertices) {
 		
 		if(vertices == null || vertices.isEmpty()) {
 			return null;
 		}
 		
 		Vertex closest = vertices.get(0);
-		double minDist = input.pos.distance(closest.pos);
+		double minDist = input.distance(closest.pos);
 		for(Vertex vertex : vertices) {
 			
-			double curDist = input.pos.distance(vertex.pos);
+			double curDist = input.distance(vertex.pos);
 			if(curDist < minDist) {
 				minDist = curDist;
 				closest = vertex;
