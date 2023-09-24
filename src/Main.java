@@ -1,10 +1,12 @@
+import java.awt.DisplayMode;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.TreeMap;
 
@@ -20,6 +22,7 @@ import com.jme3.scene.Mesh;
 import com.jme3.scene.Spatial;
 import com.jme3.scene.debug.Arrow;
 import com.jme3.scene.shape.Sphere;
+import com.jme3.system.AppSettings;
 
 public class Main extends SimpleApplication{
 	
@@ -30,6 +33,21 @@ public class Main extends SimpleApplication{
 
 	public static void main(String[] args) {
 		Main main = new Main();
+		
+		GraphicsDevice device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+		DisplayMode[] modes = device.getDisplayModes();
+		int i = 0;
+		AppSettings settings = new AppSettings(true);
+		settings.setResolution(1080, 720);
+		settings.setFrequency(modes[i].getRefreshRate());
+		settings.setBitsPerPixel(modes[i].getBitDepth());
+		settings.setVSync(true);
+		settings.setGammaCorrection(true);
+		main.setSettings(settings);
+		main.setShowSettings(false);
+		
+		main.setDisplayFps(true);
+		
 		main.start();
 	}
 	
@@ -41,7 +59,7 @@ public class Main extends SimpleApplication{
         mat.setColor("Ambient", ColorRGBA.White.mult(0.1f));
         mat.setBoolean("UseMaterialColors", true);
         mesh.setMaterial(mat);
-        rootNode.attachChild(mesh);
+//        rootNode.attachChild(mesh);
         
         verticesList = new ArrayList<Vertex>();
         
@@ -75,7 +93,6 @@ public class Main extends SimpleApplication{
         		for(Vertex b : boundary) {
         			if(v.equals(b)) {
         				v.isBoundary = true;
-        				v.g = 0d;
         			}
         		}
         	}
@@ -94,6 +111,7 @@ public class Main extends SimpleApplication{
         	int index = 0;
         	for(Map.Entry<Double, List<Vertex>> entry : rows.entrySet()) {
         		List<Vertex> r = entry.getValue();
+        		Collections.sort(r, Comparator.comparing(v -> v.g));
         		
         		if(index < 11 || index > 11) {
         			index++;
@@ -103,7 +121,7 @@ public class Main extends SimpleApplication{
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
         			System.out.println("g value: " + r.get(i).g + " f value: " + r.get(i).f);
-        			
+        			r.get(i).gradF = computeGradientF(r.get(i));
         			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
         			Arrow arrow = new Arrow(arrowVec);
         			Geometry gArrow = new Geometry("f vector", arrow);
@@ -115,7 +133,7 @@ public class Main extends SimpleApplication{
         		    rootNode.attachChild(gArrow);
         		    gArrow.setLocalTranslation(r.get(i).pos);
         		    
-        		    Vector3f arrowVec2 = new Vector3f(r.get(i).gradG).normalizeLocal();
+        		    Vector3f arrowVec2 = new Vector3f(r.get(i).gradG);
         		    Arrow arrow2 = new Arrow(arrowVec2);
         		    Geometry gArrow2 = new Geometry("grad f vector", arrow2);
         		    Material gmat2 = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -138,7 +156,7 @@ public class Main extends SimpleApplication{
 //        		    gArrow.setLocalTranslation(r.get(i).pos);
         			
         		    float hueForRow = (float) (r.get(i).f);
-        		    float hueForVertex = ((float)(r.get(i).g));
+        		    float hueForVertex = ((float)(r.get(i).g / -200d));
         		    float hue = (hueForRow + hueForVertex) / 2f;
         		    ColorRGBA color = hslToRgb(hue, 0.5f, 0.5f);
         		    
@@ -254,8 +272,54 @@ public class Main extends SimpleApplication{
 		return newVertex;
 	}
 	
+//	public void computeG(List<Vertex> verticesList, int maxIterations) {
+//		Vector3f[] gradients = new Vector3f[verticesList.size()];
+//		Vector3f[] directions = new Vector3f[verticesList.size()];
+//		double[] g_values = new double[verticesList.size()];
+//		
+//		for(int i = 0; i < verticesList.size(); i++) {
+//			Vertex v = verticesList.get(i);
+//			gradients[i] = computeGradientG(v);
+//			directions[i] = gradients[i].negate();
+//			g_values[i] = v.g;
+//		}
+//		
+//		for(int iter = 0; iter < maxIterations; iter++) {
+//			
+//			double alpha = 0.01d;
+//			
+//			for(int i = 0; i < verticesList.size(); i++) {
+//				Vertex v = verticesList.get(i);
+//				if(v.isBoundary) {
+//					continue;
+//				}
+//				
+//				g_values[i] += alpha * directions[i].length();
+//				gradients[i] = computeGradientG(v);
+//			}
+//			
+//			for(int i = 0; i < verticesList.size(); i++) {
+//				Vertex v = verticesList.get(i);
+//				if(v.isBoundary) {
+//					continue;
+//				}
+//				
+//				double beta = 0.1d;
+//				
+//				directions[i] = gradients[i].negate().add(directions[i].mult((float) beta));
+//			}
+//			
+//			for(int i = 0; i < verticesList.size(); i++) {
+//				Vertex v = verticesList.get(i);
+//				v.g = g_values[i];
+//			}
+//		}
+//	}
+	
 	public void computeG(List<Vertex> verticesList, int maxIterations) {
 		double learningRate = 0.001d;
+		double momentum = 0.9d;
+		double prevAverageError = Double.MAX_VALUE;
 		
 		for(int iter = 0; iter < maxIterations; iter++) {
 			double sums = 0d;
@@ -273,17 +337,16 @@ public class Main extends SimpleApplication{
 				v.rotatedGradF = computeTangent(v);
 				
 				double dotProduct = v.rotatedGradF.dot(v.gradG);
-				
 				double error = dotProduct - 1d;
-				
 				double squaredError = error * error;
 				
+				// compute local gradient of the objective function
 				Vector3f gradientLocalObjective = v.rotatedGradF.mult((float) (2d * error));
 				
-				v.gradG = v.gradG.subtract(gradientLocalObjective.mult((float)learningRate));
+				double gradJProj = 2d * error * gradientLocalObjective.dot(v.rotatedGradF);
 				
-				double deltaG = -learningRate * v.gradG.length();
-				v.g += deltaG;
+				v.velocity = momentum * v.velocity - learningRate * gradJProj;
+				v.g += v.velocity;
 				
 				sums += squaredError;
 			}
@@ -291,6 +354,12 @@ public class Main extends SimpleApplication{
 			averageError = sums / (double)verticesList.size();
 			
 			System.out.println("epoch: " + iter + " sum: " + sums + " average error: " + averageError);
+			
+			if(Math.abs(prevAverageError - averageError) < 1e-10) {
+				System.out.println("converged at iteration " + iter);
+				break;
+			}
+			prevAverageError = averageError;
 		}
 	}
 	
