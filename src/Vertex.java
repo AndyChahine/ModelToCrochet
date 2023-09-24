@@ -9,9 +9,10 @@ public class Vertex {
 	List<Vertex> neighbors = new ArrayList<Vertex>();
 	double f = Double.MAX_VALUE;
 	double g = Math.random();
-	Vector3f gradF = Vector3f.ZERO;
-	Vector3f gradG = Vector3f.ZERO;
-	Vector3f rotatedGradF = Vector3f.ZERO;
+	double velocity = 0.0d;
+	Vector3f gradF = new Vector3f();
+	Vector3f gradG = new Vector3f();
+	Vector3f rotatedGradF = new Vector3f();
 	boolean finalized = false;
 	boolean isBoundary = false;
 	boolean visited = false;
