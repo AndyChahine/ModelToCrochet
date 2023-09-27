@@ -59,7 +59,8 @@ public class Main extends SimpleApplication{
         mat.setColor("Ambient", ColorRGBA.White.mult(0.1f));
         mat.setBoolean("UseMaterialColors", true);
         mesh.setMaterial(mat);
-//        rootNode.attachChild(mesh);
+        rootNode.attachChild(mesh);
+        mesh.setLocalTranslation(-3f, 0f, 0f);
         
         verticesList = new ArrayList<Vertex>();
         
@@ -87,31 +88,26 @@ public class Main extends SimpleApplication{
         	
         	computeGeodesicDistance(verticesList, seed);
         	
+        	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
+        	
         	List<Vertex> boundary = findLongestGeodesic(verticesList, seed);
         	
         	for(Vertex v : verticesList) {
         		for(Vertex b : boundary) {
         			if(v.equals(b)) {
         				v.isBoundary = true;
+        				v.g = 0d;
         			}
         		}
         	}
         	
-        	TreeMap<Double, List<Vertex>> rows = groupByRows(verticesList);
-        	
-//        	for(Map.Entry<Double, List<Vertex>> mapEntry : rows.entrySet()) {
-//        		List<Vertex> list = mapEntry.getValue();
-//        		list.sort((v1, v2) -> Double.compare(v1.g, v2.g));
-//        	}
-        	
-        	computeG(verticesList, 30000);
+        	computeG(verticesList, 50);
         	
 //        	resampleVertices(rows);
         	
         	int index = 0;
         	for(Map.Entry<Double, List<Vertex>> entry : rows.entrySet()) {
         		List<Vertex> r = entry.getValue();
-        		Collections.sort(r, Comparator.comparing(v -> v.g));
         		
         		if(index < 11 || index > 11) {
         			index++;
@@ -120,19 +116,18 @@ public class Main extends SimpleApplication{
         		
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
-        			System.out.println("g value: " + r.get(i).g + " f value: " + r.get(i).f);
-        			r.get(i).gradF = computeGradientF(r.get(i));
-        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
-        			Arrow arrow = new Arrow(arrowVec);
-        			Geometry gArrow = new Geometry("f vector", arrow);
-        			Material gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
-        		    gmat.getAdditionalRenderState().setWireframe(true);
-        		    gmat.getAdditionalRenderState().setLineWidth(4);
-        		    gmat.setColor("Color", ColorRGBA.Green);
-        		    gArrow.setMaterial(gmat);
-        		    rootNode.attachChild(gArrow);
-        		    gArrow.setLocalTranslation(r.get(i).pos);
-        		    
+        			System.out.println("g value: " + r.get(i).g + " f value: " + r.get(i).f + " grad g: " + r.get(i).gradG);
+//        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
+//        			Arrow arrow = new Arrow(arrowVec);
+//        			Geometry gArrow = new Geometry("f vector", arrow);
+//        			Material gmat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+//        		    gmat.getAdditionalRenderState().setWireframe(true);
+//        		    gmat.getAdditionalRenderState().setLineWidth(4);
+//        		    gmat.setColor("Color", ColorRGBA.Green);
+//        		    gArrow.setMaterial(gmat);
+//        		    rootNode.attachChild(gArrow);
+//        		    gArrow.setLocalTranslation(r.get(i).pos);
+//        		    
         		    Vector3f arrowVec2 = new Vector3f(r.get(i).gradG);
         		    Arrow arrow2 = new Arrow(arrowVec2);
         		    Geometry gArrow2 = new Geometry("grad f vector", arrow2);
@@ -156,7 +151,7 @@ public class Main extends SimpleApplication{
 //        		    gArrow.setLocalTranslation(r.get(i).pos);
         			
         		    float hueForRow = (float) (r.get(i).f);
-        		    float hueForVertex = ((float)(r.get(i).g / -200d));
+        		    float hueForVertex = ((float)(r.get(i).g));
         		    float hue = (hueForRow + hueForVertex) / 2f;
         		    ColorRGBA color = hslToRgb(hue, 0.5f, 0.5f);
         		    
@@ -172,8 +167,8 @@ public class Main extends SimpleApplication{
                 	marker2.setColor("Color", color);
                 	Geometry mg2 = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
                 	mg2.setMaterial(marker2);
-                	Vector3f vec = new Vector3f(r.get(i).pos.x, r.get(i).pos.y, r.get(i).pos.z);
-//                	Vector3f vec = new Vector3f((float)(r.get(i).g), (float)r.get(i).f, 0f);
+//                	Vector3f vec = new Vector3f(r.get(i).pos.x, r.get(i).pos.y, r.get(i).pos.z);
+                	Vector3f vec = new Vector3f((float)(r.get(i).g), (float)r.get(i).f, 0f);
                 	vec.addLocal(3f, 0f, 0f);
                 	mg2.setLocalTranslation(vec);
                 	rootNode.attachChild(mg2);
@@ -272,6 +267,90 @@ public class Main extends SimpleApplication{
 		return newVertex;
 	}
 	
+	public void computeG(List<Vertex> verticesList, int maxIterations) {
+		int n = verticesList.size();
+		double[][] H = new double[n][n];
+		for(int i = 0; i < n; i++) {
+			H[i][i] = 1.0d;
+		}
+		
+		for(int iter = 0; iter < maxIterations; iter++) {
+			double[] localGradients = new double[n];
+			double[] p = new double[n]; // search direction
+			
+			double sumOfErrors = 0d;
+			
+			for(int i = 0; i < n; i++) {
+				Vertex v = verticesList.get(i);
+				v.gradG = computeGradientG(v);
+				v.gradF = computeGradientF(v);
+				v.rotatedGradF = computeTangent(v);
+				
+				double error = v.rotatedGradF.dot(v.gradG) - 1d;
+				sumOfErrors += error * error;
+				
+				localGradients[i] = 2d * error;
+			}
+			
+			double meanError = sumOfErrors / (double)n;
+			
+			System.out.println("epoch: " + iter + " sum of errors: " + sumOfErrors + " mean error: " + meanError);
+			
+			for(int i = 0; i < n; i++) {
+				for(int j = 0; j < n; j++) {
+					p[i] -= H[i][j]	* localGradients[j];
+				}
+			}
+			
+			double alpha = 0.1d; // should use line search to find alpha
+			
+			double[] s = new double[n];
+			double[] y = new double[n];
+			double[] newLocalGradients = new double[n];
+			for(int i = 0; i < n; i++) {
+				Vertex v = verticesList.get(i);
+				if(!v.isBoundary) {
+					s[i] = alpha * p[i];
+					v.g += s[i];
+					v.gradG = computeGradientG(v);
+					v.gradF = computeGradientF(v);
+					v.rotatedGradF = computeTangent(v);
+					newLocalGradients[i] = 2d * (v.rotatedGradF.dot(v.gradG) - 1d);
+					y[i] = newLocalGradients[i] - localGradients[i];
+				}
+			}
+			
+			double yTs = 0;
+			for(int i = 0; i < n; i++) {
+				yTs += y[i] * s[i];
+			}
+			
+			double[][] term1 = new double[n][n];
+			double[][] term2 = new double[n][n];
+			double[][] term3 = new double[n][n];
+			for(int i = 0; i < n; i++) {
+				for(int j = 0; j < n; j++) {
+					term1[i][j] = s[i] * s[j] / yTs;
+					term2[i][j] = s[i] * y[j] / yTs;
+					term3[i][j] = y[i] * s[j] / yTs;
+				}
+			}
+			
+			double[][] H_new = new double[n][n];
+			for(int i = 0; i < n; i++) {
+				for(int j = 0; j < n; j++) {
+					H_new[i][j] = H[i][j] - H[i][j] * term2[i][j] - term3[i][j] * H[i][j] + term1[i][j];
+				}
+			}
+			
+			H = H_new;
+			
+			localGradients = newLocalGradients;
+		}
+	}
+	
+	
+	
 //	public void computeG(List<Vertex> verticesList, int maxIterations) {
 //		Vector3f[] gradients = new Vector3f[verticesList.size()];
 //		Vector3f[] directions = new Vector3f[verticesList.size()];
@@ -314,54 +393,58 @@ public class Main extends SimpleApplication{
 //				v.g = g_values[i];
 //			}
 //		}
+//		
+//		for(int i = 0; i < verticesList.size(); i++) {
+//			verticesList.get(i).gradG = gradients[i];
+//		}
 //	}
 	
-	public void computeG(List<Vertex> verticesList, int maxIterations) {
-		double learningRate = 0.001d;
-		double momentum = 0.9d;
-		double prevAverageError = Double.MAX_VALUE;
-		
-		for(int iter = 0; iter < maxIterations; iter++) {
-			double sums = 0d;
-			double averageError = 0d;
-			
-			for(Vertex v : verticesList) {
-				
-				if(v.isBoundary) {
-					v.g = 0d;
-					continue;
-				}
-				
-				v.gradF = computeGradientF(v);
-				v.gradG = computeGradientG(v);
-				v.rotatedGradF = computeTangent(v);
-				
-				double dotProduct = v.rotatedGradF.dot(v.gradG);
-				double error = dotProduct - 1d;
-				double squaredError = error * error;
-				
-				// compute local gradient of the objective function
-				Vector3f gradientLocalObjective = v.rotatedGradF.mult((float) (2d * error));
-				
-				double gradJProj = 2d * error * gradientLocalObjective.dot(v.rotatedGradF);
-				
-				v.velocity = momentum * v.velocity - learningRate * gradJProj;
-				v.g += v.velocity;
-				
-				sums += squaredError;
-			}
-			
-			averageError = sums / (double)verticesList.size();
-			
-			System.out.println("epoch: " + iter + " sum: " + sums + " average error: " + averageError);
-			
-			if(Math.abs(prevAverageError - averageError) < 1e-10) {
-				System.out.println("converged at iteration " + iter);
-				break;
-			}
-			prevAverageError = averageError;
-		}
-	}
+//	public void computeG(List<Vertex> verticesList, int maxIterations) {
+//		double learningRate = 0.01d;
+//		double momentum = 0.9d;
+//		double prevAverageError = Double.MAX_VALUE;
+//		
+//		for(int iter = 0; iter < maxIterations; iter++) {
+//			double sums = 0d;
+//			double averageError = 0d;
+//			
+//			for(Vertex v : verticesList) {
+//				
+//				if(v.isBoundary) {
+//					v.g = 0d;
+//					continue;
+//				}
+//				
+//				v.gradF = computeGradientF(v);
+//				v.gradG = computeGradientG(v);
+//				v.rotatedGradF = computeTangent(v);
+//				
+//				double dotProduct = v.rotatedGradF.dot(v.gradG);
+//				double error = dotProduct - 1d;
+//				double squaredError = error * error;
+//				
+//				// compute local gradient of the objective function
+//				Vector3f gradientLocalObjective = v.rotatedGradF.mult((float) (2d * error));
+//				
+//				double gradJProj = 2d * error * gradientLocalObjective.dot(v.rotatedGradF);
+//				
+//				v.velocity = momentum * v.velocity -learningRate * gradJProj;
+//				v.g += v.velocity;
+//				
+//				sums += squaredError;
+//			}
+//			
+//			averageError = sums / (double)verticesList.size();
+//			
+//			System.out.println("epoch: " + iter + " sum: " + sums + " average error: " + averageError);
+//			
+////			if(Math.abs(prevAverageError - averageError) < 1e-10) {
+////				System.out.println("converged at iteration " + iter);
+////				break;
+////			}
+//			prevAverageError = averageError;
+//		}
+//	}
 	
 //	public void computeG(List<Vertex> verticesList, int maxIterations) {
 //		double learningRate = 0.001d;
