@@ -101,7 +101,7 @@ public class Main extends SimpleApplication{
         		}
         	}
         	
-        	computeG(verticesList, 50);
+        	computeG(verticesList, 200);
         	
 //        	resampleVertices(rows);
         	
@@ -302,7 +302,7 @@ public class Main extends SimpleApplication{
 				}
 			}
 			
-			double alpha = 0.1d; // should use line search to find alpha
+			
 			
 			double[] s = new double[n];
 			double[] y = new double[n];
@@ -310,6 +310,7 @@ public class Main extends SimpleApplication{
 			for(int i = 0; i < n; i++) {
 				Vertex v = verticesList.get(i);
 				if(!v.isBoundary) {
+					double alpha = lineSearch(i, p, localGradients, 1.0d, 0.01d, 0.5d); // should use line search to find alpha
 					s[i] = alpha * p[i];
 					v.g += s[i];
 					v.gradG = computeGradientG(v);
@@ -349,7 +350,27 @@ public class Main extends SimpleApplication{
 		}
 	}
 	
+	public double lineSearch(int vertexIndex, double[] p, double[] gradient, double alphaStart, double c, double rho) {
+		Vertex v = verticesList.get(vertexIndex);
+		double alpha = alphaStart;
+		double currentObjective = computeObjective(v, v.g);
+		while(computeObjective(v, v.g + alpha * p[vertexIndex]) > currentObjective + c * alpha * gradient[vertexIndex] * p[vertexIndex]) {
+			alpha *= rho;
+		}
+		
+		return alpha;
+	}
 	
+	private double computeObjective(Vertex v, double gValue) {
+		double tempG = v.g;
+		v.g = gValue;
+		v.gradG = computeGradientG(v);
+		v.gradF = computeGradientF(v);
+		v.rotatedGradF = computeTangent(v);
+		double error = v.rotatedGradF.dot(v.gradG) - 1d;
+		v.g = tempG;
+		return error * error;
+	}
 	
 //	public void computeG(List<Vertex> verticesList, int maxIterations) {
 //		Vector3f[] gradients = new Vector3f[verticesList.size()];
