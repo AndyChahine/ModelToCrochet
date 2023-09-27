@@ -4,6 +4,7 @@ import java.awt.GraphicsEnvironment;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -92,6 +93,7 @@ public class Main extends SimpleApplication{
         	
         	List<Vertex> boundary = findLongestGeodesic(verticesList, seed);
         	
+        	
         	for(Vertex v : verticesList) {
         		for(Vertex b : boundary) {
         			if(v.equals(b)) {
@@ -101,7 +103,24 @@ public class Main extends SimpleApplication{
         		}
         	}
         	
-        	computeG(verticesList, 200);
+
+        	for(Map.Entry<Double, List<Vertex>> entry: rows.entrySet()) {
+        		List<Vertex> l = entry.getValue();
+        		
+            	double a = 0d;
+        		for(Vertex v : l) {
+        			if(!v.isBoundary) {
+        				a += 0.1d;
+            			v.g = a;
+        			}
+        			
+        			v.gradF = computeGradientF(v);
+        			v.rotatedGradF = computeTangent(v);
+        			v.gradG = v.rotatedGradF;
+        		}
+        	}
+        	
+        	computeG(verticesList, 50);
         	
 //        	resampleVertices(rows);
         	
@@ -116,7 +135,7 @@ public class Main extends SimpleApplication{
         		
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
-        			System.out.println("g value: " + r.get(i).g + " f value: " + r.get(i).f + " grad g: " + r.get(i).gradG);
+//        			System.out.println("index: " + i + " g value: " + r.get(i).g + " f value: " + r.get(i).f + " grad g: " + r.get(i).gradG + " grad f: " + r.get(i).gradF);
 //        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
 //        			Arrow arrow = new Arrow(arrowVec);
 //        			Geometry gArrow = new Geometry("f vector", arrow);
@@ -184,6 +203,17 @@ public class Main extends SimpleApplication{
             	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
             	mg.setMaterial(marker);
             	mg.setLocalTranslation(v.pos);
+            	rootNode.attachChild(mg);
+        	}
+        	
+//        	float ci = 0f;
+        	for(int i = 0; i < 500; i++) {
+        		Vertex v = verticesList.get(i);
+        		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
+            	marker.setColor("Color", new ColorRGBA(1f, 0f, 1f, 1f));
+            	Geometry mg = new Geometry("VertexMarker", new Sphere(8, 8, 0.01f));
+            	mg.setMaterial(marker);
+            	mg.setLocalTranslation(v.pos.add(-6f, 0f, 0f));
             	rootNode.attachChild(mg);
         	}
         }
@@ -274,6 +304,8 @@ public class Main extends SimpleApplication{
 			H[i][i] = 1.0d;
 		}
 		
+		double lambda = 0d;
+		
 		for(int iter = 0; iter < maxIterations; iter++) {
 			double[] localGradients = new double[n];
 			double[] p = new double[n]; // search direction
@@ -282,7 +314,7 @@ public class Main extends SimpleApplication{
 			
 			for(int i = 0; i < n; i++) {
 				Vertex v = verticesList.get(i);
-				v.gradG = computeGradientG(v);
+				v.gradG = computeGradientG(v, lambda);
 				v.gradF = computeGradientF(v);
 				v.rotatedGradF = computeTangent(v);
 				
@@ -290,11 +322,10 @@ public class Main extends SimpleApplication{
 				sumOfErrors += error * error;
 				
 				localGradients[i] = 2d * error;
+//				System.out.println("g value: " + v.g + " grad g: " + v.gradG);
 			}
 			
 			double meanError = sumOfErrors / (double)n;
-			
-			System.out.println("epoch: " + iter + " sum of errors: " + sumOfErrors + " mean error: " + meanError);
 			
 			for(int i = 0; i < n; i++) {
 				for(int j = 0; j < n; j++) {
@@ -302,29 +333,32 @@ public class Main extends SimpleApplication{
 				}
 			}
 			
-			
-			
 			double[] s = new double[n];
 			double[] y = new double[n];
 			double[] newLocalGradients = new double[n];
+			double gradLambda = 0d;
 			for(int i = 0; i < n; i++) {
 				Vertex v = verticesList.get(i);
-				if(!v.isBoundary) {
-					double alpha = lineSearch(i, p, localGradients, 1.0d, 0.01d, 0.5d); // should use line search to find alpha
-					s[i] = alpha * p[i];
-					v.g += s[i];
-					v.gradG = computeGradientG(v);
-					v.gradF = computeGradientF(v);
-					v.rotatedGradF = computeTangent(v);
-					newLocalGradients[i] = 2d * (v.rotatedGradF.dot(v.gradG) - 1d);
-					y[i] = newLocalGradients[i] - localGradients[i];
-				}
+				double alpha = lineSearch(i, p, localGradients, 1.0d, 0.01d, 0.5d, lambda); // should use line search to find alpha
+				s[i] = alpha * p[i];
+				v.g += s[i];
+				v.gradG = computeGradientG(v, lambda);
+				v.gradF = computeGradientF(v);
+				v.rotatedGradF = computeTangent(v);
+				newLocalGradients[i] = 2d * (v.rotatedGradF.dot(v.gradG) - 1d);
+				y[i] = newLocalGradients[i] - localGradients[i];
 			}
+			
+			gradLambda += computeGradientForLambda(verticesList);
+			double stepSizeLambda = lineSearchLambda(lambda, gradLambda, 0.1d);
+			lambda += stepSizeLambda * gradLambda;
 			
 			double yTs = 0;
 			for(int i = 0; i < n; i++) {
 				yTs += y[i] * s[i];
 			}
+			
+			System.out.println("epoch: " + iter + " sum of errors: " + sumOfErrors + " mean error: " + meanError + " yTs: " + yTs);
 			
 			double[][] term1 = new double[n][n];
 			double[][] term2 = new double[n][n];
@@ -350,27 +384,88 @@ public class Main extends SimpleApplication{
 		}
 	}
 	
-	public double lineSearch(int vertexIndex, double[] p, double[] gradient, double alphaStart, double c, double rho) {
+	public double lineSearch(int vertexIndex, double[] p, double[] gradient, double alphaStart, double c, double rho, double lambda) {
 		Vertex v = verticesList.get(vertexIndex);
 		double alpha = alphaStart;
-		double currentObjective = computeObjective(v, v.g);
-		while(computeObjective(v, v.g + alpha * p[vertexIndex]) > currentObjective + c * alpha * gradient[vertexIndex] * p[vertexIndex]) {
+		double currentObjective = computeObjective(v, v.g, lambda);
+		while(computeObjective(v, v.g + alpha * p[vertexIndex], lambda) > currentObjective + c * alpha * gradient[vertexIndex] * p[vertexIndex]) {
 			alpha *= rho;
 		}
 		
 		return alpha;
 	}
 	
-	private double computeObjective(Vertex v, double gValue) {
+	private double computeObjective(Vertex v, double gValue, double lambda) {
 		double tempG = v.g;
 		v.g = gValue;
-		v.gradG = computeGradientG(v);
+		v.gradG = computeGradientG(v, lambda);
 		v.gradF = computeGradientF(v);
 		v.rotatedGradF = computeTangent(v);
 		double error = v.rotatedGradF.dot(v.gradG) - 1d;
+		double constraint = 0d;
+		if(v.isBoundary) {
+			constraint = v.g;
+		}
 		v.g = tempG;
-		return error * error;
+		return error * error + lambda * constraint;
 	}
+	
+	public Vector3f computeGradientG(Vertex v, double lambda) {
+		Vector3f gradient = new Vector3f();
+		for(Vertex neighbor : v.neighbors) {
+			Vector3f direction = neighbor.pos.subtract(v.pos);
+			double dg = neighbor.g - v.g;
+			Vector3f weightedDirection = direction.scaleAdd((float)dg, Vector3f.ZERO);
+			gradient = gradient.add(weightedDirection);
+		}
+		
+		if(v.isBoundary) {
+			gradient = gradient.subtract(new Vector3f((float)lambda, (float)lambda, (float)lambda));
+		}
+		
+		return gradient.normalizeLocal();
+	}
+	
+	public Vector3f computeGradientF(Vertex v) {
+		Vector3f gradient = new Vector3f();
+		for(Vertex neighbor : v.neighbors) {
+			Vector3f direction = neighbor.pos.subtract(v.pos);
+			double df = neighbor.f - v.f;
+			Vector3f weightedDirection = direction.scaleAdd((float) df, Vector3f.ZERO);
+			gradient = gradient.add(weightedDirection);
+		}
+		
+		return gradient.normalizeLocal();
+	}
+	
+	public double lineSearchLambda(double lambda, double gradLambda, double stepSize) {
+	    double alpha = 1.0; // Initial step size
+	    double currentObjective = computeObjectiveForLambda(lambda);
+	    while(computeObjectiveForLambda(lambda + alpha * stepSize * gradLambda) > currentObjective + 0.01 * alpha * gradLambda * stepSize) {
+	        alpha *= 0.5;
+	    }
+	    return alpha;
+	}
+	
+	private double computeGradientForLambda(List<Vertex> verticesList) {
+	    double gradient = 0.0;
+	    for(Vertex v : verticesList) {
+	        if(v.isBoundary) {
+	            gradient += v.g; // since g(B) should be 0, any deviation from 0 is the gradient
+	        }
+	    }
+	    return gradient;
+	}
+	
+	public double computeObjectiveForLambda(double lambda) {
+	    double totalObjective = 0.0;
+	    for(Vertex v : verticesList) {
+	        totalObjective += computeObjective(v, v.g, lambda);
+	    }
+	    return totalObjective;
+	}
+
+
 	
 //	public void computeG(List<Vertex> verticesList, int maxIterations) {
 //		Vector3f[] gradients = new Vector3f[verticesList.size()];
@@ -440,16 +535,13 @@ public class Main extends SimpleApplication{
 //				v.gradG = computeGradientG(v);
 //				v.rotatedGradF = computeTangent(v);
 //				
-//				double dotProduct = v.rotatedGradF.dot(v.gradG);
-//				double error = dotProduct - 1d;
+//				double error = v.rotatedGradF.dot(v.gradG) - 1d;
 //				double squaredError = error * error;
 //				
 //				// compute local gradient of the objective function
-//				Vector3f gradientLocalObjective = v.rotatedGradF.mult((float) (2d * error));
+//				double gradientLocalObjective = 2d * error;
 //				
-//				double gradJProj = 2d * error * gradientLocalObjective.dot(v.rotatedGradF);
-//				
-//				v.velocity = momentum * v.velocity -learningRate * gradJProj;
+//				v.velocity = momentum * v.velocity -learningRate * gradientLocalObjective;
 //				v.g += v.velocity;
 //				
 //				sums += squaredError;
@@ -597,30 +689,6 @@ public class Main extends SimpleApplication{
 //			System.out.println("epoch: " + iter + " sum: " + sums + " average error: " + averageError);
 //		}
 //	}
-	
-	public Vector3f computeGradientG(Vertex v) {
-		Vector3f gradient = new Vector3f();
-		for(Vertex neighbor : v.neighbors) {
-			Vector3f direction = neighbor.pos.subtract(v.pos);
-			double dg = neighbor.g - v.g;
-			Vector3f weightedDirection = direction.scaleAdd((float)dg, Vector3f.ZERO);
-			gradient = gradient.add(weightedDirection);
-		}
-		
-		return gradient.normalizeLocal();
-	}
-	
-	public Vector3f computeGradientF(Vertex v) {
-		Vector3f gradient = new Vector3f();
-		for(Vertex neighbor : v.neighbors) {
-			Vector3f direction = neighbor.pos.subtract(v.pos);
-			double df = neighbor.f - v.f;
-			Vector3f weightedDirection = direction.scaleAdd((float) df, Vector3f.ZERO);
-			gradient = gradient.add(weightedDirection);
-		}
-		
-		return gradient.normalizeLocal();
-	}
 	
 //	public void updateTentativeDistance(Vertex current, Vertex neighbor) {
 //		List<Vertex> knownNeighbors = new ArrayList<Vertex>();
