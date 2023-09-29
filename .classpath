@@ -11,7 +11,7 @@
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jinput.jar"/>
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jinput-natives-all.jar"/>
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-awt-dialogs.jar"/>
-	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-core.jar"/>
+	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-core.jar" sourcepath="C:/Users/andch/OneDrive/Desktop/sources/jme3-core-sources.jar"/>
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-desktop.jar"/>
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-effects.jar"/>
 	<classpathentry kind="lib" path="C:/Users/andch/OneDrive/Desktop/lib/jme3-jbullet.jar"/>
