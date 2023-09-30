@@ -32,6 +32,7 @@ public class Main extends SimpleApplication{
 	public static final double GRID_WIDTH = 0.5d;
 	
 	private List<Vertex> verticesList;
+	private List<Params> paramsList = new ArrayList<Params>();
 
 	public static void main(String[] args) {
 		Main main = new Main();
@@ -49,7 +50,6 @@ public class Main extends SimpleApplication{
 		main.setShowSettings(false);
 		
 		main.setDisplayFps(true);
-		
 		main.start();
 	}
 	
@@ -94,34 +94,54 @@ public class Main extends SimpleApplication{
         	
         	List<Vertex> boundary = findLongestGeodesic(verticesList, seed);
         	
-        	
-        	for(Vertex v : verticesList) {
-        		for(Vertex b : boundary) {
-        			if(v.equals(b)) {
-        				v.isBoundary = true;
-        				v.g = 0d;
-        			}
-        		}
-        	}
-        	
+        	long start = System.nanoTime();
+        	int searchSize = 1;
+        	for(int searches = 0; searches < searchSize; searches++) {
+        		for(Vertex v : verticesList) {
+            		for(Vertex b : boundary) {
+            			if(v.equals(b)) {
+            				v.isBoundary = true;
+            				v.g = 0d;
+            			}
+            		}
+            	}
 
-        	for(Map.Entry<Double, List<Vertex>> entry: rows.entrySet()) {
-        		List<Vertex> l = entry.getValue();
-        		
-            	double a = 0d;
-        		for(Vertex v : l) {
-        			if(!v.isBoundary) {
-        				a += 0.01d;
-            			v.g = a;
-        			}
-        			
-        			v.gradF = computeGradientF(v);
-        			v.rotatedGradF = computeTangent(v);
-        			v.gradG.set(v.rotatedGradF);
-        		}
+            	for(Map.Entry<Double, List<Vertex>> entry: rows.entrySet()) {
+            		List<Vertex> l = entry.getValue();
+            		
+                	double a = 0d;
+            		for(Vertex v : l) {
+            			if(!v.isBoundary) {
+            				a += 0.01d;
+                			v.g = 1d;
+            			}
+            		}
+            	}
+            	
+            	computeG(verticesList, 10000);
+            	
+            	System.out.println("search " + searches + " completed");
         	}
         	
-        	computeG(verticesList, 1000);
+        	Collections.sort(paramsList, Comparator.comparingDouble(p -> p.meanOfErrors));
+        	
+        	for(Params p : paramsList) {
+        		System.out.println(p.toString());
+        	}
+        	
+        	long end = System.nanoTime();
+        	long time = end - start;
+        	
+        	long seconds = time / 1000000000;
+        	long hours = seconds / 3600;
+        	seconds = seconds % 3600;
+        	long minutes = seconds / 60;
+        	long secondsRemaining = seconds % 60;
+        	
+        	String formattedTime = String.format("%02d:%02d:%02d", hours, minutes, secondsRemaining);
+        	System.out.println(formattedTime);
+        	
+//        	System.exit(0);
         	
 //        	resampleVertices(rows);
         	
@@ -131,12 +151,12 @@ public class Main extends SimpleApplication{
         		
         		if(index < 11 || index > 11) {
         			index++;
-//        			continue;
+        			continue;
         		}
         		
         		System.out.println("row size: " + r.size());
         		for(int i = 0; i < r.size(); i++) {
-        			System.out.println("index: " + i + " g value: " + r.get(i).g + " f value: " + r.get(i).f + " grad g: " + r.get(i).gradG + " grad f: " + r.get(i).gradF);
+        			System.out.println("index: " + i + " g value: " + r.get(i).g + " f value: " + r.get(i).f + " grad g: " + r.get(i).gradG + " rotgrad f: " + r.get(i).rotatedGradF);
 //        			Vector3f arrowVec = new Vector3f(r.get(i).rotatedGradF);
 //        			Arrow arrow = new Arrow(arrowVec);
 //        			Geometry gArrow = new Geometry("f vector", arrow);
@@ -197,7 +217,6 @@ public class Main extends SimpleApplication{
         		index++;
         	}
         	
-        	System.out.println(boundary.size());
         	for(Vertex v : boundary) {
         		Material marker = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
             	marker.setColor("Color", new ColorRGBA(0f, 0f, 1f, 1f));
@@ -305,36 +324,44 @@ public class Main extends SimpleApplication{
 			H[i][i] = 1.0d;
 		}
 		
-		double c = Math.random() / 2d;
-		double rho = Math.random();
+		double c = 0.11496810419916242;
+		double rho = 0.7584440735714182;
 		
 		double prevObjectiveValue = Double.MAX_VALUE;
 		double currentObjectiveValue;
 		
+		Params params = new Params();
+		
 		for(int iter = 0; iter < maxIterations; iter++) {
+			System.out.println("epoch: " + iter);
+			
 			double[] localGradients = new double[n];
 			double[] p = new double[n]; // search direction
 			double sumOfErrors = 0d;
 			
 			for(int i = 0; i < n; i++) {
 				Vertex v = verticesList.get(i);
+				
+				v.gradF = computeGradientF(v);
+				v.rotatedGradF = computeTangent(v);
+				
 				if(!v.isBoundary) {
 					v.gradG = computeGradientG(v);
-					v.gradF = computeGradientF(v);
-					v.rotatedGradF = computeTangent(v);
-					
-					double error = v.rotatedGradF.dot(v.gradG) - 1d;
-					sumOfErrors += error * error;
-					
-					localGradients[i] = 2d * error;
+				}else {
+					v.gradG.set(v.rotatedGradF);
 				}
+				
+				double error = v.rotatedGradF.dot(v.gradG) - 1d;
+				sumOfErrors += error * error;
+				
+				localGradients[i] = 2d * error;
 			}
 			
 			double meanError = sumOfErrors / (double)n;
 			currentObjectiveValue = meanError;
 			
 			if(Math.abs(currentObjectiveValue - prevObjectiveValue) < 1e-12) {
-				System.out.println("Convergence achieved based on function value difference");
+//				System.out.println("Convergence achieved based on function value difference");
 				break;
 			}
 			
@@ -345,7 +372,7 @@ public class Main extends SimpleApplication{
 			gradientNorm = Math.sqrt(gradientNorm);
 			
 			if(gradientNorm < 1e-12) {
-				System.out.println("Convergence achieved based on gradient norm");
+//				System.out.println("Convergence achieved based on gradient norm");
 				break;
 			}
 			
@@ -360,12 +387,16 @@ public class Main extends SimpleApplication{
 			double[] newLocalGradients = new double[n];
 			for(int i = 0; i < n; i++) {
 				Vertex v = verticesList.get(i);
-				double alpha = lineSearch(i, p, localGradients, 1.0d, c, rho); // should use line search to find alpha
+				double alpha = lineSearch(i, p, localGradients, 1.0d, c, rho);
 				s[i] = alpha * p[i];
 				v.g += s[i];
-				v.gradG = computeGradientG(v);
 				v.gradF = computeGradientF(v);
 				v.rotatedGradF = computeTangent(v);
+				if(!v.isBoundary) {
+					v.gradG = computeGradientG(v);
+				}else {
+					v.gradG.set(v.rotatedGradF);
+				}
 				newLocalGradients[i] = 2d * (v.rotatedGradF.dot(v.gradG) - 1d);
 				y[i] = newLocalGradients[i] - localGradients[i];
 			}
@@ -376,12 +407,13 @@ public class Main extends SimpleApplication{
 			}
 			
 			if (Double.isNaN(yTs)) {
-			    System.out.println("Warning: yTs is NaN or zero at iteration " + iter + " yTs: " + yTs);
-			    System.out.println("Vector y: " + Arrays.toString(y));
-			    System.out.println("Vector s: " + Arrays.toString(s));
+				break;
+//			    System.out.println("Warning: yTs is NaN or zero at iteration " + iter + " yTs: " + yTs);
+//			    System.out.println("Vector y: " + Arrays.toString(y));
+//			    System.out.println("Vector s: " + Arrays.toString(s));
 			}
 			
-			System.out.println("epoch: " + iter + " sum of errors: " + sumOfErrors + " mean error: " + meanError + " yTs: " + yTs + " c: " + c + " rho: " + rho);
+//			System.out.println("epoch: " + iter + " sum of errors: " + sumOfErrors + " mean error: " + meanError + " yTs: " + yTs + " c: " + c + " rho: " + rho);
 			
 			double[][] term1 = new double[n][n];
 			double[][] term2 = new double[n][n];
@@ -406,7 +438,11 @@ public class Main extends SimpleApplication{
 			localGradients = newLocalGradients;
 			
 			prevObjectiveValue = currentObjectiveValue;
+			
+			params.update(iter, sumOfErrors, meanError, c, rho);
 		}
+		paramsList.add(params);
+//		System.out.println("Params: " + params.toString());
 	}
 	
 	public double lineSearch(int vertexIndex, double[] p, double[] gradient, double alphaStart, double c, double rho) {
